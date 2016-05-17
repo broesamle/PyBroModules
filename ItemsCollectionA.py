@@ -82,11 +82,20 @@ class FilesInputCollection(FilesCollection):
 	def __init__(self,*args,**kwargs):
 		FilesCollection.__init__(self,*args,**kwargs)
 
-	def processFile(self,key,filepath,filename):
+	def processFile(self,key,filepath,filename,exceptOnReadError=False):
 		input_file = codecs.open(os.path.join(filepath,filename), mode="r", encoding="utf-8")
-		text = input_file.read()
-		input_file.close()
-		self.processInput(key,text)
+		try:
+			text = input_file.read()
+		except UnicodeDecodeError as e:
+			if exceptOnReadError:
+				input_file.close()
+				raise e
+			else:
+				print ("IGNORED: ", filename, 'in ', filepath, 'due to read error.')
+				return
+		else:
+			input_file.close()
+			self.processInput(key,text)
 
 	def processInput(self,key=None,text=""):
 		"""Please override this method! It is a hook for processing the text from the each processed file."""
