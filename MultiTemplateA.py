@@ -58,11 +58,11 @@ class TemplateChoice(TemplateCollection):
     def substitute(self,dict,**kwargs):
         for tem,det in self.temNdet:
             if det(dict):
-                return tem.substitute(dict,**kwargs)
+                return self.wrapper.substitute(dict, THESERIES=tem.substitute(dict,**kwargs))
         raise ValueError("None of the templates matched")
 
     def safe_substitute(self,dict,**kwargs):
         for tem,det in self.temNdet:
             if det(dict):
-                return tem.safe_substitute(dict,**kwargs)
+                return self.wrapper.safe_substitute(dict, THESERIES=tem.substitute(dict,**kwargs))
         raise ValueError("None of the templates matched")
