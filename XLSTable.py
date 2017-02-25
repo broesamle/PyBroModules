@@ -69,7 +69,7 @@ def load_datamirror_workbook(filename):
 	2. a value mirror (read-only), for accessing cell values instead of formulae. (read-only, writing to it would make openpyxl turn all the formulae in the workbook into values, even in cells which we did not touch at all.)
 	"""
 	wb 			= openpyxl.load_workbook(filename,data_only=False)
-	wb_mirror 	= openpyxl.load_workbook(filename,data_only=True,read_only=True,use_iterators=True)
+	wb_mirror 	= openpyxl.load_workbook(filename,data_only=True,read_only=True)
 	wb.data_only_mirror = wb_mirror
 	return wb
 
