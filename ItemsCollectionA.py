@@ -9,6 +9,11 @@ from collections import OrderedDict
 from string import Template
 import os, fnmatch, codecs
 
+try:
+    import markdown
+except ImportError:
+    print ('[ItemsCollectionA] module markdown was not loaded!')
+
 class ItemsCollection(OrderedDict):
     """ Collects Items in an OrderedDict. Each Item is, in turn, a dictionary.
         Overall, a collection of attribute/value items. This structure is
@@ -102,3 +107,89 @@ class FilesInputCollection(FilesCollection):
     def processInput(self,key=None,text=""):
         """Please override this method! It is a hook for processing the text from the each processed file."""
         pass
+
+class MDFilesCollection(FilesInputCollection):
+    def __init__(self, *args, **kwargs):
+        if not markdown:
+            raise Error("Module markdown is required for MDFilesCollection.")
+        self.md = markdown.Markdown(extensions = ['markdown.extensions.meta'])
+        FilesCollection.__init__(self, *args, reverse=False, **kwargs)
+
+    def processInput(self, key=None, text=""):
+        html =  self.md.reset().convert(text)
+        try:
+            self.addItem(key, self.md.Meta)
+        except Exception as e:
+            print ("key of file with empty meta info (or the like):",key)
+            raise e
+
+        self[key]['contentHTML'] = html.strip()
+
+    DEFAULTTEMPLATE = Template("""TEMPLATE FOR $THIS_ELEMENT_KEY:
+        $contentHTML
+        $PREV_LINK
+        $NEXT_LINK
+        """)
+    def iterateSeries(self,
+                      template=DEFAULTTEMPLATE,
+                      prevlinktemplate=Template("PREVLINK: $ELEMENT_KEY"),
+                      nextlinktemplate=Template("NEXTLINK: $ELEMENT_KEY"),
+                      prevlink_forfirst="",
+                      nextlink_forlast=""):
+
+        return LinkedSeriesIterator(self, template,
+                                    prevlinktemplate, nextlinktemplate,
+                                    prevlink_forfirst, nextlink_forlast)
+
+class LinkedSeriesIterator(object):
+    def __init__(self,
+                 collection,
+                 template,
+                 prevlinktemplate,
+                 nextlinktemplate,
+                 prevlink_forfirst,
+                 nextlink_forlast):
+        self.template = template
+        self.collectionitems = collection.items().__iter__()
+        self.prevlinktemplate = prevlinktemplate
+        self.nextlinktemplate = nextlinktemplate
+        self.prevlink_forfirst = prevlink_forfirst
+        self.nextlink_forlast = nextlink_forlast
+        self.thiskey, self.thisvalue = "", None
+        self.prevkey, self.prevvalue = "", None
+        try:
+            self.nextkey, self.nextvalue = self.collectionitems.__next__()
+        except StopIteration:
+            self.nextkey, nextvalue = "", None
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.prevkey, self.prevvalue = self.thiskey, self.thisvalue
+        self.thiskey, self.thisvalue = self.nextkey, self.nextvalue
+        if not self.thiskey: raise StopIteration
+        try:
+            self.nextkey, self.nextvalue = self.collectionitems.__next__()
+        except StopIteration:
+            self.nextkey, self.nextvalue = "", None
+
+        if self.prevkey:
+            prev_link = self.prevlinktemplate.substitute(self.prevvalue,
+                                                         ELEMENT_KEY=self.prevkey)
+        else:
+            prev_link = self.prevlink_forfirst
+
+        if self.nextkey:
+            next_link = self.nextlinktemplate.substitute(self.nextvalue,
+                                                         ELEMENT_KEY=self.nextkey)
+        else:
+            next_link = self.nextlink_forlast
+
+        return self.template.substitute(
+            self.thisvalue,
+            PREV_ELEMENT_KEY=self.prevkey,
+            THIS_ELEMENT_KEY=self.thiskey,
+            NEXT_ELEMENT_KEY=self.nextkey,
+            PREV_LINK=prev_link,
+            NEXT_LINK=next_link)
