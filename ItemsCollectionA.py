@@ -135,11 +135,13 @@ class MDFilesCollection(FilesInputCollection):
                       prevlinktemplate=Template("PREVLINK: $ELEMENT_KEY"),
                       nextlinktemplate=Template("NEXTLINK: $ELEMENT_KEY"),
                       prevlink_forfirst="",
-                      nextlink_forlast=""):
+                      nextlink_forlast="",
+                      additionalfields={}):
 
         return LinkedSeriesIterator(self, template,
                                     prevlinktemplate, nextlinktemplate,
-                                    prevlink_forfirst, nextlink_forlast)
+                                    prevlink_forfirst, nextlink_forlast,
+                                    additionalfields)
 
 class LinkedSeriesIterator(object):
     def __init__(self,
@@ -148,13 +150,15 @@ class LinkedSeriesIterator(object):
                  prevlinktemplate,
                  nextlinktemplate,
                  prevlink_forfirst,
-                 nextlink_forlast):
+                 nextlink_forlast,
+                 additionalfields):
         self.template = template
         self.collectionitems = collection.items().__iter__()
         self.prevlinktemplate = prevlinktemplate
         self.nextlinktemplate = nextlinktemplate
         self.prevlink_forfirst = prevlink_forfirst
         self.nextlink_forlast = nextlink_forlast
+        self.additionalfields = additionalfields
         self.thiskey, self.thisvalue = "", None
         self.prevkey, self.prevvalue = "", None
         try:
@@ -186,10 +190,11 @@ class LinkedSeriesIterator(object):
         else:
             next_link = self.nextlink_forlast
 
-        return self.template.substitute(
+        return self.thiskey, self.template.substitute(
             self.thisvalue,
             PREV_ELEMENT_KEY=self.prevkey,
             THIS_ELEMENT_KEY=self.thiskey,
             NEXT_ELEMENT_KEY=self.nextkey,
             PREV_LINK=prev_link,
-            NEXT_LINK=next_link)
+            NEXT_LINK=next_link,
+            **self.additionalfields)
