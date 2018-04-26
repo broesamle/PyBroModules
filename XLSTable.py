@@ -49,11 +49,11 @@ def evaluateCell(cell,default=None):
 #one after the other
 openpyxl.cell.cell.Cell.evaluate = evaluateCell
 
-def setValueCell(cell,value,fontRGB=None):
+def setValueCell(cell,value,fontRGB=None,bold=False):
     """ Sets the value of a cell. Style will be copied, the font color will be green to indicate the machine generation of the value."""
     cell.value = value
     if fontRGB:
-        fnt = cell.font.copy(color=Color(rgb=fontRGB))
+        fnt = cell.font.copy(color=Color(rgb=fontRGB),bold=bold)
         cell.font = fnt
     fll = cell.fill.copy()
     cell.fill = fll
