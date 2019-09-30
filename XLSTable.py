@@ -117,7 +117,7 @@ class XLSTable(object):
 
     def getColumn ( self, key, filterFn=(lambda x:x) ):
         """ Returns an iterator over all cells in the column identified by key."""
-        column,r1 = self.columns[key].column,self.columns[key].row + 1
+        column,r1 = self.columns[key].column_letter,self.columns[key].row + 1
         rn = r1 + self.rowsN - 1
         return filter(filterFn,map(lambda el:el[0], self.ws[column+str(r1)+':'+column+str(rn)]) )
 
@@ -146,7 +146,7 @@ class XLSTable(object):
         therow = OrderedDict()
         row = str(cell.row)
         for key,headercell in self.columns.items():
-            c = self.ws[headercell.column+row]
+            c = self.ws[headercell.column_letter+row]
             therow[key] = c
         return therow
 
