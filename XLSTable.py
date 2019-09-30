@@ -102,9 +102,7 @@ class XLSTable(object):
 
     def detectColumns(self):
         c = self.descr.offset(column=1)
-        #print ("column max:", self.ws.max_column)
         while c.col_idx <= self.initialMaxCol and c.value != self.TAB_RIGHTBOUND:
-            #print (c.col_idx,c)
             self.columns[c.value] = c
             c = c.offset(column=1)
 
