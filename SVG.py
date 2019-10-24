@@ -1,3 +1,5 @@
+"""Get infos from and inject elements into existing SVG files."""
+
 import re
 import xml.etree.ElementTree as ET
 
@@ -18,6 +20,8 @@ class ExistingDoc(object):
         self.root = self.tree.getroot()
 
     def viewBox(self):
+        """ Get viewBox of the toplevel SVG element (root).
+            returns a sequence of the form `[x,y,width,height]`."""
         vbox = self.root.get('viewBox', None)
         if isinstance(vbox, str):
             coords = re.findall("([^\s,]+)+", vbox)
