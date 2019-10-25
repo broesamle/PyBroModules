@@ -72,3 +72,61 @@ class Injector(ExistingDoc):
 
     def save(self, file):
         self.tree.write(file, encoding="utf8")
+
+class BaseNumDocTrafo(object):
+    """ BaseNumDocTrafo is an abstract class. Please
+        override __init__.
+
+        Transform numbers `h` and `v` defining
+        horizontal and vertical positions in some
+        'world' coordinate system into
+        document coordinates `x` and `y`. The number
+        is assumed to have a different scale (i.e.
+        physical unit) when scaling to horizontal
+        `h2x` compared to vertical `v2y` document
+        positions.
+
+        This is a base class, refraining from any
+        assumptions about how the dimensions of the
+        target view/box/area in the document are
+        derived.
+        The default unit of the document is assumed
+        to be pixels; the world coordinates are
+        numbers without unit."""
+    def __init__(self):
+        """ The scale factors `_HXscale`, `_VYscale` as
+            well as the offsets of the view from the
+            respective origins of the world and document
+            coordinate systems `x1`, `y1`, `h1`,
+            `v1` need to be defined by overriding
+            `__init__`."""
+        raise NotImplementedError("Please override __init__ to define the transformation parameters.")
+
+    def h2x(self, num):
+        """ Transform world numbers `num` to horizontal
+            document x-coordinates."""
+        delta = num - self.h1
+        return delta*self._HXscale + self.x1
+
+    def v2y(self, num):
+        """ Transform world numbers `num` to vertical
+            document y-coordinates."""
+        delta = num - self.v1
+        return delta*self._VYscale + self.y1
+
+class BaseNumDocTrafo_DeltaFn(BaseNumDocTrafo):
+    """ Like `BaseNumDocTrafo` but less efficient. In addition
+        a function can be defined for calculating the delta
+        between two values `v1`, `v2` and/or `h1`, `h2`."""
+    def __init__(self, deltaFnH=(lambda h1,h2:h2-h1),
+                       deltaFnV=(lambda v1,v2:v2-v1)):
+        self.deltaFnH = deltaFnH
+        self.deltaFnV = deltaFnV
+
+    def h2x(self, num):
+        delta = self.deltaFnH(self.h1, num)
+        return delta*self._HXscale + self.x1
+
+    def v2y(self, num):
+        delta = self.deltaFnV(self.v1, num)
+        return delta*self._VYscale + self.y1
