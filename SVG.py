@@ -1,4 +1,8 @@
-"""Get infos from and inject elements into existing SVG files."""
+""" Inject SVG content into existing SVG files.
+    Technically, parsing and manipulating documents, elements,
+    trees, sub-trees relies on python's `xml.etree.ElementTree`,
+    (ElementTree or ET in this document).
+    """
 
 import re
 import xml.etree.ElementTree as ET
@@ -12,8 +16,10 @@ class ParseError(Exception):
         super().__init__(*args, **kwargs)
 
 class ExistingDoc(object):
-    """ Open existing SVG documents for
-        retrieving content or information."""
+    """ Open existing SVG documents for retrieving content or
+        information as well as for injecting new SVG content.
+        New content can be provided as `ElementTree.Element`
+        or SVG string."""
     _NS = {'svg' :'http://www.w3.org/2000/svg'}
     def __init__(self, filename):
         self.tree = ET.parse(filename)
@@ -38,14 +44,14 @@ class ExistingDoc(object):
         return self.root.find(elementXpath, ExistingDoc._NS)
 
     def getLayersByID_dict(self, ids):
-        """ Retrieve all `<g id="ID">` elements `e`
-            for a set of given `ids` as dict of
-            `xml.etree.ElementTree.Element` instances.
-            I.e., AI layers fall into this pattern.
-            The returned dictionary `r` contains
-            elements `e` so that `r['ID'] = e` for
-            each element which has an `ID` in `ids`
-            and exists in the document."""
+        """ Retrieve all `<g id="ID">` elements for a set of
+            given `ids` and return them as dict of
+            `ElementTree.Element` instances. For instance,
+            layers in vector graphics applications often follow
+            this pattern.
+            The returned dictionary maps each ID to
+            its toplevel element; ID must be in `ids` and
+            a suitable element must exist in the document."""
         elementXpath = "svg:g[@id]"
         result = {}
         for el in self.root.findall(elementXpath,
@@ -57,21 +63,34 @@ class ExistingDoc(object):
                 result[id] = el
         return result
 
-class Injector(ExistingDoc):
-    """ Open existing SVG documents for injecting
-        new SVG content. New content can be provided
-        as `xml.etree.ElementTree` or SVG string."""
-    def inject(self, target, content):
-        if isinstance(content, ET.Element):
-            target.append(inj)
-        else:
-            try:
-                target.append(ET.fromstring(content))
-            except (ET.ParseError, TypeError) as e:
-                raise ParseError("Invalid type or syntax for injcontent %s" % content)
-
     def save(self, file):
         self.tree.write(file, encoding="utf8")
+
+class SVGDocInScale(ExistingDoc):
+    """ While there can be multiple plot/view areas with
+        individual scaling and positioning in the document,
+        the function for calculating differences (deltas)
+        between world coordinates needs to be defined once
+        for each ScaledSVGInjector instance."""
+
+    def __init__(self, file, **deltaFnHV):
+        """ `file` can be a file-like object or a filename.
+            If `deltaFnH` and/or `deltaFnV` are specified
+            they override the canonical difference operation
+            `-` for horizontal/vertical world coordinates.
+            This can be useful for non-trivial numeric
+            representations such as pythons `datetime` and
+            `timedelta`, which needs to be converted into
+            number of seconds for further calculations."""
+        self._deltaFnHV = deltaFnHV
+        super().__init__(file)
+
+    def getLayerInjector(self, id, hrange, vrange):
+        ### Get the document dimensions
+        return ScaledInjectionPoint(self.getLayer(id),
+                                    self.viewBox(),
+                                    hrange, vrange,
+                                    **self._deltaFnHV)
 
 class BaseNumDocTrafo(object):
     """ BaseNumDocTrafo is an abstract class. Please
@@ -130,3 +149,44 @@ class BaseNumDocTrafo_DeltaFn(BaseNumDocTrafo):
     def v2y(self, num):
         delta = self.deltaFnV(self.v1, num)
         return delta*self._VYscale + self.y1
+
+### FIXME: Currently, the implementation is based on
+#   BaseNumDocTrafo_DeltaFn.
+#   Dynamic re-plugging of methods via meta-programming
+#   could achieve a flexible runtime choice between
+#   the fast built-in and the parameterised
+#   `BaseNumDocTrafo_DeltaFn` approach of difference
+#   calculation.
+class ScaledInjectionPoint(BaseNumDocTrafo_DeltaFn):
+    """ Represents a target element in a parsed SVG (XML) document
+        for later injection of SVG/XML content.
+        In addition to the SVG document handling it also
+        provides the scaling functionality for world coords
+        into document coords based on a specific world view
+        and document targed area.
+        """
+    def __init__(self, target_element, viewBox, hrange, vrange,
+                 **deltaFnHV):
+        super().__init__(**deltaFnHV)
+        self.target = target_element
+
+        ### Define the View on the data: horizontal, vertical
+        self.h1, self.h2 = hrange
+        self.v1, self.v2 = vrange
+
+        ### document dimensions: x, y
+        # self.x2, self.y2 = self._x1+wdoc,self._y1+hdoc
+        self.x1, self.y1, width, height = viewBox
+
+        ### scale factors for transforming world to doc coords
+        self._HXscale = width / self.deltaFnH(self.h1, self.h2)
+        self._VYscale = height / self.deltaFnV(self.v1, self.v2)
+
+    def inject(self, content):
+        if isinstance(content, ET.Element):
+            self.target.append(inj)
+        else:
+            try:
+                self.target.append(ET.fromstring(content))
+            except (ET.ParseError, TypeError) as e:
+                raise ParseError("Invalid type or syntax for content %s" % content)
