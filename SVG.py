@@ -15,6 +15,10 @@ class ParseError(Exception):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+class NotFoundError(Exception):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
 class ExistingDoc(object):
     """ Open existing SVG documents for retrieving content or
         information as well as for injecting new SVG content.
@@ -72,24 +76,27 @@ class SVGDocInScale(ExistingDoc):
         in the document.
         """
 
-    def __init__(self, file, **deltaFnHV):
-        """ `file` can be a file-like object or a filename.
-            `_deltaFnHV` can be used to define custom delta
-            calculation methods (cf. `NumDocTrafo`)."""
-        self._deltaFnHV = deltaFnHV
-        super().__init__(file)
-
-    def getLayerInjector(self, id, hrange, vrange):
+    def getLayerInjector(self, id, hrange, vrange, **deltaFnHV):
         """ Get a `ScaledInjectionPoint` instance for injecting
             content into the layer top-level element.
+
             Transformation parameters will be based on the
             document top-level element's viewBox and the given
             visible ranges `hrange` and `vrange` in world
-            coordinates."""
-        return ScaledInjectionPoint(self.getLayer(id),
+            coordinates.
+
+            `_deltaFnHV` can be used to define custom delta
+            calculation methods (cf. `NumDocTrafo`)."""
+        target_el = self.getLayer(id)
+        if not target_el:
+            raise NotFoundError("No Layer with id=%s" % id)
+        return ScaledInjectionPoint(target_el,
                                     self.viewBox(),
                                     hrange, vrange,
-                                    **self._deltaFnHV)
+                                    **deltaFnHV)
+
+    def getRectInjector(self, id, hrange, vrange, **deltaFnHV):
+        return None
 
 class NumDocTrafo(object):
     """ Transform numbers `h` and `v` (horizontal and
