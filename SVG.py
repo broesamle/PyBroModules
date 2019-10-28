@@ -67,120 +67,123 @@ class ExistingDoc(object):
         self.tree.write(file, encoding="utf8")
 
 class SVGDocInScale(ExistingDoc):
-    """ While there can be multiple plot/view areas with
-        individual scaling and positioning in the document,
-        the function for calculating differences (deltas)
-        between world coordinates needs to be defined once
-        for each ScaledSVGInjector instance."""
+    """ Inject graphical content into an existing SVG document
+        based on multiple target areas / injection points
+        in the document.
+        """
 
     def __init__(self, file, **deltaFnHV):
         """ `file` can be a file-like object or a filename.
-            If `deltaFnH` and/or `deltaFnV` are specified
-            they override the canonical difference operation
-            `-` for horizontal/vertical world coordinates.
-            This can be useful for non-trivial numeric
-            representations such as pythons `datetime` and
-            `timedelta`, which needs to be converted into
-            number of seconds for further calculations."""
+            `_deltaFnHV` can be used to define custom delta
+            calculation methods (cf. `NumDocTrafo`)."""
         self._deltaFnHV = deltaFnHV
         super().__init__(file)
 
     def getLayerInjector(self, id, hrange, vrange):
-        ### Get the document dimensions
+        """ Get a `ScaledInjectionPoint` instance for injecting
+            content into the layer top-level element.
+            Transformation parameters will be based on the
+            document top-level element's viewBox and the given
+            visible ranges `hrange` and `vrange` in world
+            coordinates."""
         return ScaledInjectionPoint(self.getLayer(id),
                                     self.viewBox(),
                                     hrange, vrange,
                                     **self._deltaFnHV)
 
-class BaseNumDocTrafo(object):
-    """ BaseNumDocTrafo is an abstract class. Please
-        override __init__.
+class NumDocTrafo(object):
+    """ Transform numbers `h` and `v` (horizontal and
+        vertical positions in some 'world' coordinate system)
+        into document coordinates `x` and `y`. Horizontal and
+        vertical world coordinates can have different (physical)
+        units. `__init__` dynamically creates the tranformation
+        functions `h2x` and `v2y` as instance properties
+        (not methods!).
 
-        Transform numbers `h` and `v` defining
-        horizontal and vertical positions in some
-        'world' coordinate system into
-        document coordinates `x` and `y`. The number
-        is assumed to have a different scale (i.e.
-        physical unit) when scaling to horizontal
-        `h2x` compared to vertical `v2y` document
-        positions.
+        For cases where the built-in operator `-` is not
+        suitable for calculating deltas between world
+        coordinates, alternative delta functions can be defined
+        for one or both dimensions. The default unit of the
+        document is assumed to be pixels. The world coordinates
+        have to be numbers without unit."""
+    def __init__(self, viewBox, hrange, vrange,
+                 deltaFnH=None, deltaFnV=None):
+        """ Initialize document and world coordinate systems,
+            including the transformation functions, as
+            dynamically generated instance properties (not
+            methods!).
 
-        This is a base class, refraining from any
-        assumptions about how the dimensions of the
-        target view/box/area in the document are
-        derived.
-        The default unit of the document is assumed
-        to be pixels; the world coordinates are
-        numbers without unit."""
-    def __init__(self):
-        """ The scale factors `_HXscale`, `_VYscale` as
-            well as the offsets of the view from the
-            respective origins of the world and document
-            coordinate systems `x1`, `y1`, `h1`,
-            `v1` need to be defined by overriding
-            `__init__`."""
-        raise NotImplementedError("Please override __init__ to define the transformation parameters.")
-
-    def h2x(self, num):
-        """ Transform world numbers `num` to horizontal
-            document x-coordinates."""
-        delta = num - self.h1
-        return delta*self._HXscale + self.x1
-
-    def v2y(self, num):
-        """ Transform world numbers `num` to vertical
-            document y-coordinates."""
-        delta = num - self.v1
-        return delta*self._VYscale + self.y1
-
-class BaseNumDocTrafo_DeltaFn(BaseNumDocTrafo):
-    """ Like `BaseNumDocTrafo` but less efficient. In addition
-        a function can be defined for calculating the delta
-        between two values `v1`, `v2` and/or `h1`, `h2`."""
-    def __init__(self, deltaFnH=(lambda h1,h2:h2-h1),
-                       deltaFnV=(lambda v1,v2:v2-v1)):
-        self.deltaFnH = deltaFnH
-        self.deltaFnV = deltaFnV
-
-    def h2x(self, num):
-        delta = self.deltaFnH(self.h1, num)
-        return delta*self._HXscale + self.x1
-
-    def v2y(self, num):
-        delta = self.deltaFnV(self.v1, num)
-        return delta*self._VYscale + self.y1
-
-### FIXME: Currently, the implementation is based on
-#   BaseNumDocTrafo_DeltaFn.
-#   Dynamic re-plugging of methods via meta-programming
-#   could achieve a flexible runtime choice between
-#   the fast built-in and the parameterised
-#   `BaseNumDocTrafo_DeltaFn` approach of difference
-#   calculation.
-class ScaledInjectionPoint(BaseNumDocTrafo_DeltaFn):
-    """ Represents a target element in a parsed SVG (XML) document
-        for later injection of SVG/XML content.
-        In addition to the SVG document handling it also
-        provides the scaling functionality for world coords
-        into document coords based on a specific world view
-        and document targed area.
-        """
-    def __init__(self, target_element, viewBox, hrange, vrange,
-                 **deltaFnHV):
-        super().__init__(**deltaFnHV)
-        self.target = target_element
+            If `deltaFnH` and/or `deltaFnV` are specified
+            they override the canonical difference operation
+            `-` for horizontal/vertical world coordinates.
+            This can be useful for non-trivial
+            numeric representations such as python's `datetime`
+            and `timedelta`, which needs conversion into
+            number of seconds for further calculations."""
 
         ### Define the View on the data: horizontal, vertical
         self.h1, self.h2 = hrange
         self.v1, self.v2 = vrange
-
         ### document dimensions: x, y
-        # self.x2, self.y2 = self._x1+wdoc,self._y1+hdoc
         self.x1, self.y1, width, height = viewBox
+        ### init scale factors and transformation functions
+        if deltaFnH is not None:
+            # use non-trivial delta calculation function
+            self.HXscale = width / deltaFnH(self.h1, self.h2)
+            self.h2x = lambda h,                \
+                              h1=self.h1,       \
+                              x1=self.x1,       \
+                              sc=self.HXscale,  \
+                              D=deltaFnH : D(h1,h)*sc + x1
+        else:
+            # simple and fast via built-in `-`
+            self.HXscale = width / (self.h2-self.h1)
+            self.h2x = lambda h,           \
+                              h1=self.h1,  \
+                              x1=self.x1,  \
+                              sc=self.HXscale : (h-h1)*sc + x1
 
-        ### scale factors for transforming world to doc coords
-        self._HXscale = width / self.deltaFnH(self.h1, self.h2)
-        self._VYscale = height / self.deltaFnV(self.v1, self.v2)
+        if deltaFnV is not None:
+            # use non-trivial delta calculation function
+            self.VYscale = width / deltaFnV(self.v1, self.v2)
+            self.v2y = lambda v,                \
+                              v1=self.v1,       \
+                              y1=self.y1,       \
+                              sc=self.VYscale,  \
+                              D=deltaFnV : D(v1,v)*sc + y1
+        else:
+            # simple and fast via built-in `-`
+            self.VYscale = width / (self.v2-self.v1)
+            self.v2y = lambda v,           \
+                              v1=self.v1,  \
+                              y1=self.y1,  \
+                              sc=self.VYscale : (v-v1)*sc + y1
+
+    def h2x(num):
+        """ Transform world numbers `num` to horizontal
+            document x-coordinates. This stub will be replaced
+            by __init__."""
+        raise Exception("Internal error: h2x was not initialized properly. Please contact the administrator ,-)")
+
+    def v2y(num):
+        """ Transform world numbers `num` to vertical
+            document y-coordinates. This stub will be replaced
+            by __init__."""
+        raise Exception("Internal error: h2x was not initialized properly. Please contact the administrator ,-)")
+
+class ScaledInjectionPoint(NumDocTrafo):
+    """ Represents a target element in a parsed SVG (XML)
+        document for the purpose of injecting SVG content.
+
+        Each ScaledInjectionPoint comes with its own rectangular
+        target area in the document, usually derived from a
+        `rect` element or a `viewBox` attribute. A pair of
+        'visible' ranges defines the 'view' on the data in a
+        world/source/data/user-chosen coordinate system."""
+    def __init__(self, target_element, viewBox, hrange, vrange,
+                 **deltaFnHV):
+        super().__init__(viewBox, hrange, vrange, **deltaFnHV)
+        self.target = target_element
 
     def inject(self, content):
         if isinstance(content, ET.Element):
