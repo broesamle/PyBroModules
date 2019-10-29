@@ -44,7 +44,7 @@ class ExistingDoc(object):
             raise ParseError("Unknown error while parsing viewBox coordinates: %s" % vbox)
 
     def getLayer(self, id):
-        elementXpath = "svg:g[@id='%s']" % id
+        elementXpath = ".//svg:g[@id='%s']" % id
         return self.root.find(elementXpath, ExistingDoc._NS)
 
     def getLayersByID_dict(self, ids):
@@ -59,13 +59,20 @@ class ExistingDoc(object):
         elementXpath = "svg:g[@id]"
         result = {}
         for el in self.root.findall(elementXpath,
-                                    _NS):
+                                    ExistingDoc._NS):
             id = el.get('id')
             if id in ids:
                 if id in result:
                     raise ParseError("Duplicate element with id %s" % id)
                 result[id] = el
         return result
+
+    def getSVGElement(self, tag, id):
+        """ `tag` is the local svg tagname, without any
+            namespace prefixes (e.g. 'rect', 'g')"""
+        elementXpath = ".//svg:%s[@id='%s']" % (tag,id)
+        r = self.root.find(elementXpath, ExistingDoc._NS)
+        return r
 
     def save(self, file):
         self.tree.write(file, encoding="utf8")
@@ -119,6 +126,10 @@ class NumDocTrafo(object):
             including the transformation functions, as
             dynamically generated instance properties (not
             methods!).
+
+            `viewBox` is of the SVG canonical form
+            (x,y,width,height) where x, y, width, and height are
+            numbers, not strings.
 
             If `deltaFnH` and/or `deltaFnV` are specified
             they override the canonical difference operation
