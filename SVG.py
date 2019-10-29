@@ -167,7 +167,6 @@ class NumDocTrafo(object):
             numeric representations such as python's `datetime`
             and `timedelta`, which needs conversion into
             number of seconds for further calculations."""
-
         ### Define the View on the data: horizontal, vertical
         self.h1, self.h2 = hrange
         self.v1, self.v2 = vrange
@@ -192,7 +191,7 @@ class NumDocTrafo(object):
 
         if deltaFnV is not None:
             # use non-trivial delta calculation function
-            self.VYscale = width / deltaFnV(self.v1, self.v2)
+            self.VYscale = heigth / deltaFnV(self.v1, self.v2)
             self.v2y = lambda v,                \
                               v1=self.v1,       \
                               y1=self.y1,       \
@@ -200,7 +199,7 @@ class NumDocTrafo(object):
                               D=deltaFnV : D(v1,v)*sc + y1
         else:
             # simple and fast via built-in `-`
-            self.VYscale = width / (self.v2-self.v1)
+            self.VYscale = height / (self.v2-self.v1)
             self.v2y = lambda v,           \
                               v1=self.v1,  \
                               y1=self.y1,  \
