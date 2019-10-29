@@ -108,7 +108,31 @@ class SVGDocInScale(ExistingDoc):
                                     **deltaFnHV)
 
     def getRectInjector(self, id, hrange, vrange, **deltaFnHV):
-        return None
+        target_el = self.getSVGElement('rect', id)
+        if target_el is None:
+            raise NotFoundError("No `rect` element with id=%s" % id)
+
+        ### derive target area from the rect geometry
+        viewBox = list(map(float, (target_el.attrib['x'],
+                                   target_el.attrib['y'],
+                                   target_el.attrib['width'],
+                                   target_el.attrib['height'])))
+        ### copy the original injection rect
+        cpy_el = ET.fromstring(ET.tostring(target_el))
+        ### replace a `rect` by a `g` in the exact same position
+        # for a first cut: the hacky way:
+        # avoid fiddeling with parents and idices
+        # FIXME: Maybe, these attribs should not be written?
+        target_el.tag = target_el.tag.replace('rect','g')
+        target_el.attrib = {'id': "INJ_%s" % id}
+        ### make the copy translucent and add it to the target
+        cpy_el.attrib['opacity'] = "0.452"
+        target_el.append(cpy_el)
+        ### create and return the injection point
+        return ScaledInjectionPoint(target_el,
+                                    viewBox,
+                                    hrange, vrange,
+                                    **deltaFnHV)
 
 class NumDocTrafo(object):
     """ Transform numbers `h` and `v` (horizontal and
