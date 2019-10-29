@@ -83,7 +83,7 @@ class SVGDocInScale(ExistingDoc):
         in the document.
         """
 
-    def getLayerInjector(self, id, hrange, vrange, **deltaFnHV):
+    def getLayerInjector(self, id, hrange, vrange, group=None, **deltaFnHV):
         """ Get a `ScaledInjectionPoint` instance for injecting
             content into the layer top-level element.
 
@@ -97,6 +97,11 @@ class SVGDocInScale(ExistingDoc):
         target_el = self.getLayer(id)
         if not target_el:
             raise NotFoundError("No Layer with id=%s" % id)
+        ### if group element is given, insert it as inj. target
+        if group is not None:
+            g = ET.fromstring(group)
+            target_el.append(g)
+            target_el = g
         return ScaledInjectionPoint(target_el,
                                     self.viewBox(),
                                     hrange, vrange,
