@@ -1,8 +1,8 @@
 """ Inject SVG content into existing SVG files.
-    Technically, parsing and manipulating documents, elements,
-    trees, sub-trees relies on python's `xml.etree.ElementTree`,
-    (ElementTree or ET in this document).
-    """
+
+Relies on `xml.etree.ElementTree` (in short `ET`)
+for SVG/XML element representation.
+"""
 
 import re
 import xml.etree.ElementTree as ET
@@ -20,18 +20,23 @@ class NotFoundError(Exception):
         super().__init__(*args, **kwargs)
 
 class ExistingDoc(object):
-    """ Open existing SVG documents for retrieving content or
-        information as well as for injecting new SVG content.
-        New content can be provided as `ElementTree.Element`
-        or SVG string."""
+    """ An existing SVG document.
+
+    Allows to inject new SVG content which be provided as
+    `xml.etree.ElementTree.Element` or string.
+    """
+
     _NS = {'svg' :'http://www.w3.org/2000/svg'}
+
     def __init__(self, filename):
         self.tree = ET.parse(filename)
         self.root = self.tree.getroot()
 
-    def viewBox(self):
-        """ Get viewBox of the toplevel SVG element (root).
-            returns a sequence of the form `[x,y,width,height]`."""
+    def get_viewbox(self):
+        """ Get the `viewBox` of the toplevel (root) SVG element.
+
+        Returns a sequence of the form `[x,y,width,height]`.
+        """
         vbox = self.root.get('viewBox', None)
         if isinstance(vbox, str):
             coords = re.findall("([^\s,]+)+", vbox)
@@ -43,22 +48,32 @@ class ExistingDoc(object):
         else:
             raise ParseError("Unknown error while parsing viewBox coordinates: %s" % vbox)
 
-    def getLayer(self, id):
-        elementXpath = ".//svg:g[@id='%s']" % id
-        return self.root.find(elementXpath, ExistingDoc._NS)
+    def get_layer(self, id):
+        """ Get an SVG `g` element with the given `id`.
 
-    def getLayersByID_dict(self, ids):
-        """ Retrieve all `<g id="ID">` elements for a set of
-            given `ids` and return them as dict of
-            `ElementTree.Element` instances. For instance,
-            layers in vector graphics applications often follow
-            this pattern.
-            The returned dictionary maps each ID to
-            its toplevel element; ID must be in `ids` and
-            a suitable element must exist in the document."""
-        elementXpath = "svg:g[@id]"
+        Popular vector graphics applications interpret
+        this pattern as a 'layer'.
+
+        `id` must me a be a string.
+        """
+        ### FIXME: Throw NotFoundError instead of returning None
+        xpath = ".//svg:g[@id='%s']" % id
+        return self.root.find(xpath, ExistingDoc._NS)
+
+    def get_layers_as_dict(self, ids):
+        """ Retrieve all 'layers' with given `ids`.
+
+        'layer': cf. `get_layer`
+
+        Returns a dict of `ElementTree.Element` instances.
+        The returned dictionary maps each id to its corresponding
+        SVG `g` element representing the layer.
+        If no element is found, the corresponding id will not
+        be in the dict.
+        """
+        xpath = "svg:g[@id]"
         result = {}
-        for el in self.root.findall(elementXpath,
+        for el in self.root.findall(xpath,
                                     ExistingDoc._NS):
             id = el.get('id')
             if id in ids:
@@ -67,34 +82,40 @@ class ExistingDoc(object):
                 result[id] = el
         return result
 
-    def getSVGElement(self, tag, id):
-        """ `tag` is the local svg tagname, without any
-            namespace prefixes (e.g. 'rect', 'g')"""
-        elementXpath = ".//svg:%s[@id='%s']" % (tag,id)
-        r = self.root.find(elementXpath, ExistingDoc._NS)
-        return r
+    def get_svg_element(self, tag, id):
+        """ Return the svg `tag` element with the given `id`.
+
+        `tag` is the local svg tagname as a `str`, without
+        any namespace prefixes. Examples: 'rect', 'g'.
+        """
+        xpath = ".//svg:%s[@id='%s']" % (tag,id)
+        return self.root.find(xpath, ExistingDoc._NS)
 
     def save(self, file):
         self.tree.write(file, encoding="utf8")
 
 class SVGDocInScale(ExistingDoc):
-    """ Inject graphical content into an existing SVG document
-        based on multiple target areas / injection points
-        in the document.
-        """
+    """ Inject graphical content into an existing SVG document.
 
-    def getLayerInjector(self, id, hrange, vrange, group=None, **deltaFnHV):
-        """ Get a `ScaledInjectionPoint` instance for injecting
-            content into the layer top-level element.
+    An `InjectPoint` can be obtained via `*_injectpoint`
+    methods. Multiple injectpoints can be used simultaneously.
+    """
+
+    def get_layer_injectpoint(self, id, hrange, vrange,
+                              group=None, **delta_hv):
+        """ Get a `ScaledInjectPoint` for injecting content.
+
+            The element for injection will be the SVG `g`
+            element representing the layer with the given `id`.
 
             Transformation parameters will be based on the
-            document top-level element's viewBox and the given
-            visible ranges `hrange` and `vrange` in world
-            coordinates.
+            document's top-level element's `viewBox` and the
+            given ranges.
 
-            `_deltaFnHV` can be used to define custom delta
-            calculation methods (cf. `NumDocTrafo`)."""
-        target_el = self.getLayer(id)
+            `hrange`, `vrange`, `delta_h`, `delta_v`:
+            cf. WorldDocTrafo.
+            """
+        target_el = self.get_layer(id)
         if not target_el:
             raise NotFoundError("No Layer with id=%s" % id)
         ### if group element is given, insert it as inj. target
@@ -102,136 +123,152 @@ class SVGDocInScale(ExistingDoc):
             g = ET.fromstring(group)
             target_el.append(g)
             target_el = g
-        return ScaledInjectionPoint(target_el,
-                                    self.viewBox(),
-                                    hrange, vrange,
-                                    **deltaFnHV)
+        return ScaledInjectPoint(target_el,
+                                 self.get_viewbox(),
+                                 hrange, vrange,
+                                 **delta_hv)
 
-    def getRectInjector(self, id, hrange, vrange, **deltaFnHV):
-        target_el = self.getSVGElement('rect', id)
+    def get_rect_injectpoint(self, id, hrange, vrange, **delta_hv):
+        def _rect2group(svgelement, newattribs):
+            # FIXME:
+            # To just rename the tag rather than cleanly create
+            # a new element is certainly not polite towards
+            # the ethos of engineering.
+            # However, it avoids finding parents and indices,
+            # which is not straightforward in ElementTree.
+            svgelement.tag = svgelement.tag.replace('rect','g')
+            svgelement.attrib = newattribs
+            return svgelement
+
+        target_el = self.get_svg_element('rect', id)
         if target_el is None:
             raise NotFoundError("No `rect` element with id=%s" % id)
+        vbox = list(map(float, (target_el.attrib['x'],
+                                target_el.attrib['y'],
+                                target_el.attrib['width'],
+                                target_el.attrib['height'])))
+        injectrect_copy = ET.fromstring(ET.tostring(target_el))
+        injectrect_copy.attrib['opacity'] = "0.452"
+        target_el = _rect2group(target_el,
+                                {'id': "INJ_%s" % id})
+        target_el.append(injectrect_copy)
+        return ScaledInjectPoint(target_el, vbox,
+                                 hrange, vrange, **delta_hv)
 
-        ### derive target area from the rect geometry
-        viewBox = list(map(float, (target_el.attrib['x'],
-                                   target_el.attrib['y'],
-                                   target_el.attrib['width'],
-                                   target_el.attrib['height'])))
-        ### copy the original injection rect
-        cpy_el = ET.fromstring(ET.tostring(target_el))
-        ### replace a `rect` by a `g` in the exact same position
-        # for a first cut: the hacky way:
-        # avoid fiddeling with parents and idices
-        # FIXME: Maybe, these attribs should not be written?
-        target_el.tag = target_el.tag.replace('rect','g')
-        target_el.attrib = {'id': "INJ_%s" % id}
-        ### make the copy translucent and add it to the target
-        cpy_el.attrib['opacity'] = "0.452"
-        target_el.append(cpy_el)
-        ### create and return the injection point
-        return ScaledInjectionPoint(target_el,
-                                    viewBox,
-                                    hrange, vrange,
-                                    **deltaFnHV)
+class WorldDocTrafo(object):
+    """ Transform world coords into document coordinates.
 
-class NumDocTrafo(object):
-    """ Transform numbers `h` and `v` (horizontal and
-        vertical positions in some 'world' coordinate system)
-        into document coordinates `x` and `y`. Horizontal and
-        vertical world coordinates can have different (physical)
-        units. `__init__` dynamically creates the tranformation
-        functions `h2x` and `v2y` as instance properties
-        (not methods!).
+    Convention:
 
-        For cases where the built-in operator `-` is not
-        suitable for calculating deltas between world
-        coordinates, alternative delta functions can be defined
-        for one or both dimensions. The default unit of the
-        document is assumed to be pixels. The world coordinates
-        have to be numbers without unit."""
-    def __init__(self, viewBox, hrange, vrange,
-                 deltaFnH=None, deltaFnV=None):
-        """ Initialize document and world coordinate systems,
-            including the transformation functions, as
-            dynamically generated instance properties (not
-            methods!).
+    `h`, `v`: horizontal and vertical coords in some
+        world/source/data/user-chosen coordinate system
+        Horizontal and vertical world coords can have
+        different (physical) units; which corresponds to s
+        eparate scale factors for each dimension.
+        World coordinates have to be numbers without unit.
 
-            `viewBox` is of the SVG canonical form
-            (x,y,width,height) where x, y, width, and height are
-            numbers, not strings.
+    `x`, `y`: document coordinates as they will
+        appear in the final SVG document. The default unit of the
+        document is assumed to be pixels.
 
-            If `deltaFnH` and/or `deltaFnV` are specified
-            they override the canonical difference operation
-            `-` for horizontal/vertical world coordinates.
-            This can be useful for non-trivial
-            numeric representations such as python's `datetime`
-            and `timedelta`, which needs conversion into
-            number of seconds for further calculations."""
+    `__init__` dynamically creates the tranformation functions
+        `h2x` and `v2y` as instance properties (not methods!).
+        Alternative delta calculation functions can be defined.
+        """
+
+    def __init__(self, viewbox, hrange, vrange,
+                 delta_h=None, delta_v=None):
+        """ Initialize scale factors and transformation functions.
+
+        `viewbox`:  SVG canonical form `(x,y,width,height)`
+            but with x, y, width, and height being `float`.
+
+        `hrange`, `vrange`:
+            A 'view' on the data (world coords).
+
+        `delta_h`, `delta_v` (optional): If defined they
+            override the canonical difference operation `-` for
+            delta calculation on world coordinates.
+            This can be useful for cases where the built-in `-`
+            is not suitable such as for non-trivial numeric
+            representations with, say, python's `datetime` and
+            `timedelta` which needs conversion for further
+            calculations.
+            """
         ### Define the View on the data: horizontal, vertical
         self.h1, self.h2 = hrange
         self.v1, self.v2 = vrange
         ### document dimensions: x, y
-        self.x1, self.y1, width, height = viewBox
+        self.x1, self.y1, width, height = viewbox
         ### init scale factors and transformation functions
-        if deltaFnH is not None:
-            # use non-trivial delta calculation function
-            self.HXscale = width / deltaFnH(self.h1, self.h2)
-            self.h2x = lambda h,                \
-                              h1=self.h1,       \
-                              x1=self.x1,       \
-                              sc=self.HXscale,  \
-                              D=deltaFnH : D(h1,h)*sc + x1
+        if delta_h is not None:
+            # non-trivial delta calculation function
+            self.hx_factor = width / delta_h(self.h1, self.h2)
+            self.h2x = lambda h,                 \
+                              h1=self.h1,        \
+                              x1=self.x1,        \
+                              sc=self.hx_factor, \
+                              d=delta_h : d(h1,h)*sc + x1
         else:
-            # simple and fast via built-in `-`
-            self.HXscale = width / (self.h2-self.h1)
+            # use simple and fast `-`
+            self.hx_factor = width / (self.h2-self.h1)
             self.h2x = lambda h,           \
                               h1=self.h1,  \
                               x1=self.x1,  \
-                              sc=self.HXscale : (h-h1)*sc + x1
+                              sc=self.hx_factor : (h-h1)*sc + x1
 
-        if deltaFnV is not None:
-            # use non-trivial delta calculation function
-            self.VYscale = heigth / deltaFnV(self.v1, self.v2)
-            self.v2y = lambda v,                \
-                              v1=self.v1,       \
-                              y1=self.y1,       \
-                              sc=self.VYscale,  \
-                              D=deltaFnV : D(v1,v)*sc + y1
+        if delta_v is not None:
+            # non-trivial delta calculation function
+            self.vy_factor = heigth / delta_v(self.v1, self.v2)
+            self.v2y = lambda v,                 \
+                              v1=self.v1,        \
+                              y1=self.y1,        \
+                              sc=self.vy_factor, \
+                              d=delta_v : d(v1,v)*sc + y1
         else:
-            # simple and fast via built-in `-`
-            self.VYscale = height / (self.v2-self.v1)
-            self.v2y = lambda v,           \
-                              v1=self.v1,  \
-                              y1=self.y1,  \
-                              sc=self.VYscale : (v-v1)*sc + y1
+            # use simple and fast `-`
+            self.vy_factor = height / (self.v2-self.v1)
+            self.v2y = lambda v,          \
+                              v1=self.v1, \
+                              y1=self.y1, \
+                              sc=self.vy_factor : (v-v1)*sc + y1
 
-    def h2x(num):
-        """ Transform world numbers `num` to horizontal
-            document x-coordinates. This stub will be replaced
-            by __init__."""
+    def h2x(h):
+        """ Horizontal world coords `h` --> document x-coordinates.
+
+        This stub will be replaced by __init__.
+        """
         raise Exception("Internal error: h2x was not initialized properly. Please contact the administrator ,-)")
 
-    def v2y(num):
-        """ Transform world numbers `num` to vertical
-            document y-coordinates. This stub will be replaced
-            by __init__."""
+    def v2y(v):
+        """ Vertical world coords `v` --> document y-coordinates.
+
+        This stub will be replaced by __init__.
+        """
         raise Exception("Internal error: h2x was not initialized properly. Please contact the administrator ,-)")
 
-class ScaledInjectionPoint(NumDocTrafo):
-    """ Represents a target element in a parsed SVG (XML)
-        document for the purpose of injecting SVG content.
+class ScaledInjectPoint(WorldDocTrafo):
+    """ Scale and inject SVG content into a target area/element.
 
-        Each ScaledInjectionPoint comes with its own rectangular
-        target area in the document, usually derived from a
-        `rect` element or a `viewBox` attribute. A pair of
-        'visible' ranges defines the 'view' on the data in a
-        world/source/data/user-chosen coordinate system."""
+        `ScaledInjectPoint` is derived from `WorldDocTrafo`
+        and combines a target SVG element with specific scaling
+        parameters for injecting content into a rectangular
+        target area (e.g. derived from the geometry of the `rect`
+        element or its `viewBox`).
+        """
+
     def __init__(self, target_element, viewBox, hrange, vrange,
-                 **deltaFnHV):
-        super().__init__(viewBox, hrange, vrange, **deltaFnHV)
+                 **delta_hv):
+        """ Extends `WorldDocTrafo.__init__`.
+
+        `target_element`: An SVG element defining
+            the point where new conted will get injected.
+        """
+        super().__init__(viewBox, hrange, vrange, **delta_hv)
         self.target = target_element
 
     def inject(self, content):
+        """Inject SVG content provided as `str` or `ET.Element`."""
         if isinstance(content, ET.Element):
             self.target.append(inj)
         else:
