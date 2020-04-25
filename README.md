@@ -1,11 +1,16 @@
-# PyBroeModules
+PyBroeModules
+=============
 
 (Personal) Python Modules used regualarly in multiple projects/contexts.
 
-And, more importantly, my GIT Sandbox.
 
-Next thing to do ... getting into automatic documentation, which is currently a nice idea based on my javadoc
-experiences but complete chaos in the python practice!
+Install
+-------
 
-See you soon with more, 
-Br:o
+Structured as a package for local PIP install.
+
+1. Clone or download from github:
+    `git clone https://github.com/broesamle/PyBroeModules.git`
+
+2. Install package from local dir:
+    `pip install -e PyBroeModules`
