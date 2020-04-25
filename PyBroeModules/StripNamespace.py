@@ -1,4 +1,5 @@
 import io
+import warnings
 import xml.etree.ElementTree as ET
 
 ### Source: http://stackoverflow.com/questions/8113296/supressing-namespace-prefixes-in-elementtree-1-2
@@ -20,6 +21,8 @@ class StripNamespace(ET.TreeBuilder):
         super(StripNamespace, self).end(tag)
 
 def stripNamespace(content):
+    warnings.warn("There are better ways to handle xml namespaces!",
+                  DeprecationWarning)
     target = StripNamespace()
     parser = ET.XMLParser(target=target)
     root = ET.XML(content, parser=parser)
